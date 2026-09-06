@@ -1,5 +1,5 @@
 -- A real, shared 3D pistol attached to each character's animated hand.
-FpsWeapon={lastShot=-100,objects={},flashes={},native={}}
+FpsWeapon={lastShot=-100,objects={},flashes={},tracers={},native={}}
 local W=FpsWeapon
 local behavior=hook_behavior(nil,OBJ_LIST_GENACTOR,false,function(o)
     o.oFlags=OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE
@@ -42,20 +42,49 @@ function W.flash_at(pos)
 end
 
 function W.flash(m,d) W.flash_at(W.muzzle(m,d)) end
-function W.tracer(p)
-    if not FpsCombat.finite(p.distance) then return end
-    local length=math.max(0,math.min(p.distance,1800))
-    -- Short-lived beads make the hitscan direction visible without colliders.
-    for step=1,math.min(18,math.floor(length/60)) do
-        local t=step*60
-        local o=FpsRagdoll.object(E_MODEL_YELLOW_SPHERE,
-            {x=p.ox+p.dx*t,y=p.oy+p.dy*t,z=p.oz+p.dz*t},0.035)
-        if o then W.flashes[#W.flashes+1]={o=o,expires=get_global_timer()+3} end
+-- Cosmetic travel only: damage still uses the referee's immediate hitscan.
+function W.update_tracers()
+    for i=#W.tracers,1,-1 do
+        local shot=W.tracers[i]
+        local age=get_global_timer()-shot.started
+        if age>=shot.duration then
+            for _,o in ipairs(shot.objects) do obj_mark_for_deletion(o) end
+            table.remove(W.tracers,i)
+        else
+            local head=shot.distance*math.min(1,(age+1)/shot.duration)
+            for j,o in ipairs(shot.objects) do
+                local t=math.max(0,head-(j-1)*22)
+                o.oPosX,o.oPosY,o.oPosZ=shot.ox+shot.dx*t,shot.oy+shot.dy*t,shot.oz+shot.dz*t
+                o.header.gfx.pos.x,o.header.gfx.pos.y,o.header.gfx.pos.z=o.oPosX,o.oPosY,o.oPosZ
+            end
+        end
     end
+end
+function W.tracer(p)
+    for _,key in ipairs({'distance','ox','oy','oz','dx','dy','dz'}) do
+        if not FpsCombat.finite(p[key]) then return end
+    end
+    if p.distance<=0 or p.distance>FpsCombat.RANGE then return end
+    -- Bound cosmetic objects even in busy multiplayer matches.
+    if #W.tracers>=64 then
+        for _,o in ipairs(table.remove(W.tracers,1).objects) do obj_mark_for_deletion(o) end
+    end
+    local shot={distance=p.distance,ox=p.ox,oy=p.oy,oz=p.oz,dx=p.dx,dy=p.dy,dz=p.dz,
+        started=get_global_timer(),duration=math.max(6,math.ceil(p.distance/650)),objects={}}
+    for j=1,6 do
+        local o=FpsRagdoll.object(E_MODEL_YELLOW_SPHERE,{x=p.ox,y=p.oy,z=p.oz},0.38-(j-1)*0.045)
+        if o then
+            obj_set_billboard(o)
+            shot.objects[#shot.objects+1]=o
+        end
+    end
+    W.tracers[#W.tracers+1]=shot
+    W.update_tracers()
 end
 
 local function update()
     if not FpsArena then return end
+    W.update_tracers()
     for i=#W.flashes,1,-1 do
         local flash=W.flashes[i]
         if get_global_timer()>=flash.expires then obj_mark_for_deletion(flash.o); table.remove(W.flashes,i) end
@@ -173,4 +202,4 @@ end)
 hook_event(HOOK_MARIO_UPDATE,W.pose)
 hook_event(HOOK_UPDATE,update)
 hook_event(HOOK_ON_OBJECT_RENDER,render)
-hook_event(HOOK_ON_CLEAR_AREAS,function() W.objects={}; W.flashes={} end)
+hook_event(HOOK_ON_CLEAR_AREAS,function() W.objects={}; W.flashes={}; W.tracers={} end)

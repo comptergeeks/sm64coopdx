@@ -44,3 +44,22 @@ m.character.type=2; a.animID=MARIO_ANIM_WALKING+300
 FpsWeapon.pose(m)
 assert(a.animID==MARIO_ANIM_WALK_WITH_LIGHT_OBJ+300,'alternate character holding animation was not selected')
 print('Passed weapon checks: grip alignment at three angles, walk continuity, movement heading, character animation mapping')
+-- Tracers stay visible, face the camera, stop at collision, and release objects.
+local now=0
+function get_global_timer() return now end
+function obj_set_billboard(o) o.billboard=true end
+function obj_mark_for_deletion(o) o.deleted=true end
+FpsRagdoll={object=function(model,pos,scale)
+    return {scale=scale,header={gfx={pos={}}}}
+end}
+FpsWeapon.tracer({distance=350,ox=0,oy=100,oz=0,dx=0,dy=0,dz=1})
+local shot=FpsWeapon.tracers[1]
+assert(#shot.objects==6 and shot.objects[1].billboard and shot.objects[1].scale>=0.3)
+for tick=0,5 do
+    now=tick; FpsWeapon.update_tracers()
+    assert(#FpsWeapon.tracers==1,'tracer disappeared too early')
+    for _,o in ipairs(shot.objects) do assert(o.oPosZ>=0 and o.oPosZ<=350,'tracer crossed hit surface') end
+end
+now=6; FpsWeapon.update_tracers()
+assert(#FpsWeapon.tracers==0 and shot.objects[1].deleted,'tracer objects leaked')
+print('Passed tracer checks: visibility, camera facing, collision endpoint and cleanup')
