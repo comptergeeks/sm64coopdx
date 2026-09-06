@@ -1,5 +1,5 @@
--- name: Third Person Arena (Prototype)
--- description: Third-person shoulder-camera combat with Koopa bots and cosmetic ragdolls.\nMouse 1 or R: fire. L: swap shoulder. /tps: camera. /bots 0-4: bots.\nHost and fighters must share an area.
+-- name: Third Person Arena
+-- description: Third-person shoulder-camera combat with Koopa bots and cosmetic ragdolls.\nMouse 1, B or R: fire. L: swap shoulder. /tps: camera. /bots 0-4: bots.\nFriends can fight across connected stages.
 -- incompatible: gamemode camera
 -- pausable: false
 
@@ -7,22 +7,29 @@ local C = FpsCombat
 local PROTOCOL = 'tps-arena-v1'
 local enabled, sequence, nextShot = true, 0, 0
 local flashUntil, hitUntil = 0, 0
-local history, received, victimCooldown = {}, {}, {}
+local history, received, victimCooldown, ledgerReceived = {}, {}, {}, {}
 FpsArena={}
 
 local function tick() return get_global_timer() end
-local function server()
-    if network_is_server() then return gNetworkPlayers[0] end
-    for i = 1, MAX_PLAYERS-1 do
-        local np = gNetworkPlayers[i]
-        if np.connected and np.type == NPT_SERVER then return np end
+-- Each occupied area elects the connected player with the lowest global ID.
+-- That peer has its collision loaded, so combat works away from the lobby host.
+local function referee_for(area)
+    local best
+    for i=0,MAX_PLAYERS-1 do
+        local np=gNetworkPlayers[i]
+        if np.connected and np.currAreaSyncValid and np.currLevelSyncValid and C.same_area(np,area)
+            and (not best or np.globalIndex<best.globalIndex) then best=np end
     end
+    return best
 end
+local function server() return referee_for(gNetworkPlayers[0]) end
+FpsArena.referee_for=referee_for
 
 local function active(i)
     local m, np = gMarioStates[i], gNetworkPlayers[i]
     return np and np.connected and np.currAreaSyncValid and np.currLevelSyncValid
         and is_player_active(m) ~= 0 and m.health > 0xFF
+        and not (gPlayerSyncTable and gPlayerSyncTable[i].tpsDead)
         and (m.action & ACT_FLAG_INTANGIBLE) == 0
 end
 FpsArena.active=active
@@ -43,15 +50,33 @@ end
 
 local function receive_result(p)
     if not C.valid_shot(p) or not C.finite(p.victim) or not C.finite(p.victimEpoch) then return end
-    local host = server()
     local botShot=FpsBots and FpsBots.is_id(p.shooter)
-    local shooter = botShot and host or network_player_from_global_index(p.shooter)
+    local shooter=network_player_from_global_index(p.shooter)
+    if botShot then
+        for i=0,MAX_PLAYERS-1 do
+            if gNetworkPlayers[i].connected and gNetworkPlayers[i].type==NPT_SERVER then shooter=gNetworkPlayers[i]; break end
+        end
+    end
+    if not shooter or shooter.currLevelAreaSeqId~=p.epoch then return end
+    local host=referee_for(shooter)
+    if not host or p.referee~=host.globalIndex then return end
+    -- The lobby host keeps scores even when another area's referee resolves hits.
+    local ledger=ledgerReceived[p.shooter]
+    if network_is_server() and FpsMatch and p.victim>=0
+        and (not ledger or ledger.epoch~=p.epoch or p.seq>ledger.seq) then
+        ledgerReceived[p.shooter]={epoch=p.epoch,seq=p.seq}
+        local victim=network_player_from_global_index(p.victim)
+        if victim and victim.currLevelAreaSeqId==p.victimEpoch and C.same_area(victim,shooter) then
+            FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz})
+        end
+    end
     local me = gNetworkPlayers[0]
     if not host or not shooter or not C.same_area(host, me) or not C.same_area(shooter, me) then return end
     if shooter.currLevelAreaSeqId ~= p.epoch then return end
     if botShot and (not FpsBots.in_area() or FpsBots.generation(p.shooter)~=p.botGeneration) then return end
     if received[p.shooter] and p.seq <= received[p.shooter] then return end
     received[p.shooter] = p.seq
+    if FpsWeapon and FpsWeapon.tracer then FpsWeapon.tracer(p) end
     if not botShot and p.shooter~=me.globalIndex and FpsWeapon then
         FpsWeapon.flash(gMarioStates[shooter.localIndex],{x=p.dx,y=p.dy,z=p.dz})
     end
@@ -59,9 +84,10 @@ local function receive_result(p)
     if p.victim ~= me.globalIndex or p.victimEpoch ~= me.currLevelAreaSeqId or not active(0) then return end
     local m = gMarioStates[0]
     if m.invincTimer > 0 then return end
+    if FpsMatch then FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz}) end
     m.health = math.max(0xFF, m.health-(botShot and 0x100 or C.DAMAGE))
     m.invincTimer = 20
-    -- Transitional native knockback. An articulated ragdoll will replace this later.
+    -- Nonlethal hits use native knockback; lethal hits enter the match ragdoll.
     if (m.action & ACT_FLAG_SWIMMING) == 0 then
         m.faceAngle.y = atan2s(-p.dz, -p.dx)
         set_mario_action(m, ACT_BACKWARD_AIR_KB, 0)
@@ -94,7 +120,7 @@ end
 local botSequences={}
 function FpsArena.bot_shot(bot,origin,direction)
     if not network_is_server() then return end
-    local victim=ray_target(origin,direction,-1,false)
+    local victim,distance=ray_target(origin,direction,-1,false)
     if not victim then return end
     local targetNp=network_player_from_global_index(victim)
     local target=gMarioStates[targetNp.localIndex]
@@ -102,16 +128,18 @@ function FpsArena.bot_shot(bot,origin,direction)
     victimCooldown[victim]=tick()+20
     local id=FpsBots.id(bot.index)
     botSequences[id]=(botSequences[id] or 0)+1
-    local p={protocol=PROTOCOL,kind='result',shooter=id,seq=botSequences[id],
+    local p={protocol=PROTOCOL,kind='result',shooter=id,seq=botSequences[id],distance=distance,referee=gNetworkPlayers[0].globalIndex,
         epoch=gNetworkPlayers[0].currLevelAreaSeqId,botGeneration=bot.generation,
         victim=victim,victimEpoch=targetNp.currLevelAreaSeqId,
         ox=origin.x,oy=origin.y,oz=origin.z,dx=direction.x,dy=direction.y,dz=direction.z}
+    if FpsMatch then FpsMatch.record_hit(victim,id,targetNp.currLevelAreaSeqId,direction) end
     network_send(true,p)
     receive_result(p)
 end
 
 local function resolve_shot(p)
-    if not network_is_server() or not C.valid_shot(p) then return end
+    local referee=server()
+    if not referee or referee.localIndex~=0 or not C.valid_shot(p) then return end
     local np = network_player_from_global_index(p.shooter)
     if not np or not active(np.localIndex) or not C.same_area(np, gNetworkPlayers[0]) then return end
     if np.currLevelAreaSeqId ~= p.epoch then return end
@@ -121,11 +149,14 @@ local function resolve_shot(p)
     if C.distance(origin, {x=m.pos.x, y=m.pos.y+90, z=m.pos.z}) > 200 then return end
     if not C.admit(history, p, tick()) then return end
     if FpsBots then gGlobalSyncTable.fpsBotAwake=true end
-    local victim = ray_target(origin,direction,np.localIndex,true)
+    local victim,distance = ray_target(origin,direction,np.localIndex,true)
+    p.distance=distance
+    p.referee=referee.globalIndex
     local victimEpoch = -1
     if victim and FpsBots and FpsBots.is_id(victim) then
         victimEpoch=FpsBots.generation(victim) or -1
-        if not FpsBots.damage(victim,direction) then victim=nil end
+        if not FpsBots.damage(victim,direction) then victim=nil
+        elseif FpsMatch and FpsBots.bots[victim-MAX_PLAYERS+1].hp==0 then FpsMatch.bot_kill(p.shooter,victim) end
     elseif victim then
         local targetNp = network_player_from_global_index(victim)
         local target = gMarioStates[targetNp.localIndex]
@@ -136,6 +167,7 @@ local function resolve_shot(p)
             victimCooldown[victim] = tick()+20
         end
     end
+    if victim and FpsMatch and not (FpsBots and FpsBots.is_id(victim)) then FpsMatch.record_hit(victim,p.shooter,victimEpoch,direction) end
     p.protocol, p.kind, p.victim, p.victimEpoch = PROTOCOL, 'result', victim or -1, victimEpoch
     network_send(true, p)
     receive_result(p)
@@ -164,7 +196,7 @@ local function fire()
         dx=dx/length, dy=dy/length, dz=dz/length}
     FpsWeapon.flash(m,{x=p.dx,y=p.dy,z=p.dz})
     play_sound(SOUND_OBJ_POUNDING_CANNON, m.marioObj.header.gfx.cameraToObject)
-    if network_is_server() then resolve_shot(p) else network_send_to(host.localIndex, true, p) end
+    if host.localIndex==0 then resolve_shot(p) else network_send_to(host.localIndex, true, p) end
 end
 
 local function before_mario(m)
@@ -178,8 +210,9 @@ end
 
 local function packet(p)
     if type(p) ~= 'table' or p.protocol ~= PROTOCOL then return end
-    if p.kind == 'shot' then resolve_shot(p)
-    elseif p.kind == 'result' and not network_is_server() then receive_result(p) end
+    if p.kind == 'death' and FpsMatch then FpsMatch.record_death(p)
+    elseif p.kind == 'shot' then resolve_shot(p)
+    elseif p.kind == 'result' then receive_result(p) end
 end
 
 local function hud()
@@ -202,23 +235,23 @@ local function hud()
     djui_hud_set_color(255, 255, 255, 230)
     local host = server()
     local label = host and C.same_area(host, gNetworkPlayers[0])
-        and 'MOUSE 1 / B / R: FIRE   L: SHOULDER' or 'JOIN THE HOST IN THE SAME AREA TO FIGHT'
+        and 'MOUSE 1 / B / R: FIRE   L: SHOULDER' or 'WAITING FOR AREA SYNC'
     djui_hud_set_color(12,20,34,175)
     djui_hud_render_rect(5,h-23,225,14)
     djui_hud_set_color(255,255,255,240)
     djui_hud_print_text(label, 8, h-20, 0.35)
     if FpsBots then
         djui_hud_set_color(12,20,34,175)
-        djui_hud_render_rect(5,29,190,14)
+        djui_hud_render_rect(5,29,108,14)
         djui_hud_set_color(255,255,255,240)
-        djui_hud_print_text('KOOPA BOTS: '..(gGlobalSyncTable.fpsBotCount or 0)
-            ..'   ELIMINATIONS: '..(gGlobalSyncTable.fpsBotKills or 0),8,32,0.35)
+        djui_hud_print_text('BOTS: '..(gGlobalSyncTable.fpsBotCount or 0)
+            ..'   KOs: '..(gGlobalSyncTable.fpsBotKills or 0),8,32,0.35)
     end
 end
 
 local function reset_player(m)
     local id = gNetworkPlayers[m.playerIndex].globalIndex
-    history[id], received[id], victimCooldown[id] = nil, nil, nil
+    history[id], received[id], victimCooldown[id], ledgerReceived[id] = nil, nil, nil, nil
 end
 
 hook_event(HOOK_ON_SYNC_VALID, function()
@@ -234,17 +267,6 @@ hook_event(HOOK_ON_HUD_RENDER, hud)
 hook_event(HOOK_ON_PLAYER_CONNECTED, reset_player)
 hook_event(HOOK_ON_PLAYER_DISCONNECTED, reset_player)
 hook_event(HOOK_ON_EXIT, restore_camera)
-local wasDead={}
-hook_event(HOOK_MARIO_UPDATE,function(m)
-    if not FpsRagdoll then return end
-    local dead=m.health<=0xFF
-    if dead and not wasDead[m.playerIndex] and is_player_active(m)~=0 then
-        local v=m.vel
-        local length=math.max(1,math.sqrt(v.x*v.x+v.y*v.y+v.z*v.z))
-        FpsRagdoll.spawn(m.pos,m.faceAngle.y*math.pi/32768,{x=v.x/length,y=0.3,z=v.z/length},false)
-    end
-    wasDead[m.playerIndex]=dead
-end)
 hook_chat_command('tps', 'Toggle shoulder camera (both views are third person).', function()
     enabled = not enabled
     if enabled then configure_camera() else restore_camera() end

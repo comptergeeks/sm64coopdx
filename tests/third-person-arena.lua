@@ -23,7 +23,7 @@ check(C.ray_capsule({x=0,y=80,z=500},direction,players[1].pos,160) == 0,
 check(C.pick_target(origin,direction,{{id=1,pos={x=0,y=0,z=7000},height=160}}) == nil,
     'range is bounded')
 local function shot(seq)
-    return {protocol='tps-arena-v1',kind='shot',shooter=1,seq=seq or 1,epoch=7,
+    return {protocol='tps-arena-v1',kind='shot',shooter=1,seq=seq or 1,epoch=7,referee=0,
         ox=0,oy=120,oz=0,dx=0,dy=0,dz=1}
 end
 local history = {}
@@ -55,7 +55,7 @@ for i=0,2 do
         currAreaSyncValid=true,currLevelSyncValid=true}
     gMarioStates[i]={playerIndex=i,pos={x=0,y=0,z=i==0 and 500 or 0},health=0x880,
         action=0,invincTimer=0,faceAngle={y=0},vel={y=0},controller={buttonDown=0,buttonPressed=0},
-        marioObj={header={gfx={cameraToObject={}}}}}
+        marioBodyState={},marioObj={header={gfx={cameraToObject={}}}}}
 end
 gMarioStates[2].pos.x=1000
 gFirstPersonCamera={enabled=false,forceRoll=false,centerL=true,fov=70,pitch=0,yaw=0,crouch=0}
@@ -240,4 +240,44 @@ controller.buttonPressed=B_BUTTON
 hooks.HOOK_BEFORE_MARIO_UPDATE(gMarioStates[0])
 check(controller.buttonDown==0 and controller.buttonPressed==0,
     'cooldown also consumes B so repeated fire cannot punch')
+-- Match lifecycle regression: a death is scored once and respawns in-area.
+gPlayerSyncTable={ [0]={},[1]={},[2]={} }
+HOOK_ON_DEATH,ACT_DISAPPEARED,ACT_FREEFALL,GRAPH_RENDER_ACTIVE='HOOK_ON_DEATH',100,101,1
+dofile('mods/third-person-arena/af-match.lua')
+local me=gMarioStates[0]
+me.numLives=4; me.marioObj.header.gfx.node={flags=0}
+FpsMatch.spawns={{x=10,y=20,z=30}}
+FpsMatch.record_hit(0,1,gNetworkPlayers[0].currLevelAreaSeqId,{x=0,y=0,z=1})
+FpsMatch.begin(me)
+check(FpsMatch.dead and gPlayerSyncTable[0].tpsDead and not FpsArena.active(0),
+    'eliminated player leaves combat during countdown')
+check(gGlobalSyncTable.tpsDeaths0==1 and gGlobalSyncTable.tpsKills1==1,
+    'host awards one death and credits recent shooter')
+FpsMatch.record_death({victim=0,serial=1,epoch=gNetworkPlayers[0].currLevelAreaSeqId})
+check(gGlobalSyncTable.tpsDeaths0==1,'duplicate death cannot change score')
+FpsMatch.record_death({victim=0,serial=2,epoch=-1})
+check(gGlobalSyncTable.tpsDeaths0==1,'stale-area death cannot change score')
+now=FpsMatch.respawnAt-1
+FpsMatch.before(me)
+check(FpsMatch.dead and me.action==ACT_DISAPPEARED,'countdown retains eliminated state')
+now=now+1
+FpsMatch.before(me)
+check(not FpsMatch.dead and me.health==0x880 and me.invincTimer==90,
+    'countdown restores full health with spawn protection')
+check(me.pos.x==10 and me.pos.y==60 and me.pos.z==30 and me.action==ACT_FREEFALL,
+    'respawn returns to safe ground without a stage warp')
+check(C.safe_surface({type=0,normal={y=1}}),'flat ordinary ground is safe')
+check(not C.safe_surface({type=0x23,normal={y=1}}),'instant quicksand cannot be a bot or respawn floor')
+check(not C.safe_surface({type=0,normal={y=0.3}}),'steep slopes cannot be a bot or respawn floor')
+local oldLevel=gNetworkPlayers[0].currLevelNum
+gNetworkPlayers[0].currLevelNum=123
+gNetworkPlayers[1].connected=true; gNetworkPlayers[2].connected=true
+check(FpsArena.referee_for(gNetworkPlayers[1]).globalIndex==1,
+    'remote area elects a referee even when lobby host is elsewhere')
+gNetworkPlayers[1].connected=false
+check(FpsArena.referee_for(gNetworkPlayers[2]).globalIndex==2,
+    'next connected player takes over area after referee leaves')
+gNetworkPlayers[1].connected=true; gNetworkPlayers[0].currLevelNum=oldLevel
+SURFACE_BURNING=1
+check(not C.safe_surface({type=1,normal={y=1}}),'lava cannot be a bot or respawn floor')
 print('Passed '..count..' checks')

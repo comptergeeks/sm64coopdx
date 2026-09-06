@@ -47,13 +47,20 @@ function B.reset()
     end
 end
 
+local function safe_floor(x,y,z)
+    local height=find_floor_height(x,y,z)
+    if collision_find_floor and not C.safe_surface(collision_find_floor(x,y,z)) then return -11000 end
+    if find_water_level and height<find_water_level(x,z)-30 then return -11000 end
+    return height
+end
+
 local function spawn(index,generation)
     local m=gMarioStates[0]
     for attempt=0,15 do
         local angle=ThirdPersonCamera.yaw+(index-1.5)*0.7+attempt*0.42
         local radius=650+attempt*25
         local x,z=m.pos.x+math.sin(angle)*radius,m.pos.z+math.cos(angle)*radius
-        local y=find_floor_height(x,m.pos.y+400,z)
+        local y=safe_floor(x,m.pos.y+400,z)
         if y>-10000 and math.abs(y-m.pos.y)<300 then
             local wall=collision_find_surface_on_ray(m.pos.x,m.pos.y+90,m.pos.z,x-m.pos.x,y-m.pos.y,z-m.pos.z)
             if not wall.surface then
@@ -123,7 +130,7 @@ local function move(bot,target,distance)
     local strafe=math.sin(get_global_timer()*0.025+bot.index*2)*0.75
     local vx,vz=(dx*approach-dz*strafe)*5,(dz*approach+dx*strafe)*5
     local x,z=bot.x+vx,bot.z+vz
-    local floor=find_floor_height(x,bot.y+100,z)
+    local floor=safe_floor(x,bot.y+100,z)
     if floor < -10000 or floor-bot.y>45 or bot.y-floor>80 then return end
     local lengthMove=math.sqrt(vx*vx+vz*vz)
     if lengthMove<0.1 then return end
@@ -135,8 +142,8 @@ end
 local function host_update()
     local now=get_global_timer()
     if not B.start then B.reset() end
-    if now<B.start or not FpsArena.active(0) then return end
     local np=gNetworkPlayers[0]
+    if now<B.start or not np.currLevelSyncValid or not np.currAreaSyncValid then return end
     gGlobalSyncTable.fpsBotLevel,gGlobalSyncTable.fpsBotArea=np.currLevelNum,np.currAreaIndex
     gGlobalSyncTable.fpsBotAct,gGlobalSyncTable.fpsBotCourse=np.currActNum,np.currCourseNum
     gGlobalSyncTable.fpsBotCount=B.count
@@ -154,7 +161,7 @@ local function host_update()
                         bot.cooldown=now+90+index*10
                         -- Aim is deliberately imperfect; dodging and strafing should work.
                         local aim={x=target.pos.x+math.sin(now*0.13+index)*55,y=target.pos.y+90,z=target.pos.z}
-                        local origin={x=bot.x,y=bot.y+115,z=bot.z}
+                        local origin={x=bot.x,y=bot.y+80,z=bot.z}
                         local length=C.distance(origin,aim)
                         if length>1 then
                             FpsArena.bot_shot(bot,origin,{x=(aim.x-origin.x)/length,
@@ -190,9 +197,18 @@ local function render_update()
                     B.visuals[index]=v
                 end
                 local yaw=get(index,'yaw') or 0
-                v.body.oPosX,v.body.oPosY,v.body.oPosZ=pos.x,pos.y,pos.z
+                v.body.oPosX=v.body.oPosX+(pos.x-v.body.oPosX)*0.45
+                v.body.oPosY=v.body.oPosY+(pos.y-v.body.oPosY)*0.45
+                v.body.oPosZ=v.body.oPosZ+(pos.z-v.body.oPosZ)*0.45
                 v.body.oFaceAngleYaw=yaw
-                v.gun.oPosX,v.gun.oPosY,v.gun.oPosZ=pos.x+sins(yaw)*65,pos.y+100,pos.z+coss(yaw)*65
+                v.gun.oPosX=v.body.oPosX+sins(yaw)*20-coss(yaw)*40
+                v.gun.oPosY=v.body.oPosY+70
+                v.gun.oPosZ=v.body.oPosZ+coss(yaw)*20+sins(yaw)*40
+                local flash=get(index,'flash') or 0
+                if flash>0 and flash~=v.flash and FpsWeapon then
+                    v.flash=flash
+                    FpsWeapon.flash_at({x=v.gun.oPosX+sins(yaw)*32,y=v.gun.oPosY+10,z=v.gun.oPosZ+coss(yaw)*32})
+                end
                 v.gun.oFaceAngleYaw=yaw
             end
         elseif v then

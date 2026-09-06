@@ -55,6 +55,7 @@
 #include "smlua_model_utils.h"
 #include "pc/lua/smlua.h"
 #include "actors/tps_pistol/model.inc.c"
+#include "actors/tps_ragdoll/model.inc.c"
 
 struct ModelUtilsInfo {
     enum ModelExtendedId extId;
@@ -462,6 +463,13 @@ struct ModelUtilsInfo sModels[E_MODEL_MAX] = {
     MODEL_UTIL_GEO_PERM(E_MODEL_WARIOS_WING_CAP,           warios_wing_cap_geo,           MODEL_WARIOS_WING_CAP),
     MODEL_UTIL_GEO_PERM(E_MODEL_WARIOS_WINGED_METAL_CAP,   warios_winged_metal_cap_geo,   MODEL_WARIOS_WINGED_METAL_CAP),
     MODEL_UTIL_GEO(E_MODEL_TPS_PISTOL, tps_pistol_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_BODY, tps_koopa_body_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_HEAD, tps_koopa_head_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_ARM, tps_koopa_arm_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_HAND, tps_koopa_hand_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_LEG, tps_koopa_leg_geo),
+    MODEL_UTIL_GEO(E_MODEL_TPS_KOOPA_FOOT, tps_koopa_foot_geo),
+
 };
 
 #define CUSTOM_MODEL_CHUNK_SIZE 256

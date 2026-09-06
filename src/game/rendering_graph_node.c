@@ -1156,6 +1156,81 @@ static void anim_process(Vec3f translation, Vec3s rotation, Vec3f scale, u8 *ani
     }
 }
 
+// Preserve the selected character's actual mesh, palette and scale while the
+// arena solver drives its joints. Rest transforms are captured during live play.
+struct TpsSkinPose {
+    bool active;
+    Mat4 bones[MARIO_ANIM_PART_MAX];
+    Vec3f rest[11];
+};
+static struct TpsSkinPose sTpsSkin[MAX_PLAYERS];
+static const u8 sTpsNodeParts[11] = {2,3,4,7,8,11,12,15,16,19,20};
+// Bone anchor and the two simulated nodes defining its rotation.
+static const u8 sTpsBoneLinks[MARIO_ANIM_PART_MAX][3] = {
+    {0,0,1}, {0,0,1}, {0,0,1}, {1,1,2}, {2,1,2},
+    {1,1,3}, {1,1,3}, {3,3,4}, {4,3,4},
+    {1,1,5}, {1,1,5}, {5,5,6}, {6,5,6},
+    {0,0,7}, {0,0,7}, {7,7,8}, {8,7,8},
+    {0,0,9}, {0,0,9}, {9,9,10}, {10,9,10},
+};
+
+static void tps_rotate_vector(Vec3f out, Vec3f v, Vec3f axis, f32 sine, f32 cosine) {
+    f32 dot = vec3f_dot(axis, v);
+    Vec3f cross;
+    vec3f_cross(cross, axis, v);
+    for (s32 i = 0; i < 3; i++) {
+        out[i] = v[i] * cosine + cross[i] * sine + axis[i] * dot * (1.0f - cosine);
+    }
+}
+
+static void tps_skin_bone(void) {
+    if (!gCurMarioBodyState || gCurGraphNodeHeldObject || !gCurGraphNodeCamera) { return; }
+    struct MarioState *mario = get_mario_state_from_object((struct Object *) gCurGraphNodeObject);
+    if (!mario) { return; }
+    s32 player = mario->playerIndex;
+    s32 part = gCurMarioBodyState->currAnimPart;
+    if (player < 0 || player >= MAX_PLAYERS || part <= 0 || part >= MARIO_ANIM_PART_MAX) { return; }
+    struct TpsSkinPose *pose = &sTpsSkin[player];
+    struct MarioBodyState *body = gCurMarioBodyState;
+    Mat4 inverse, world;
+    if (!body->tpsRagdoll) {
+        pose->active = false;
+        mtxf_inverse(inverse, *gCurGraphNodeCamera->matrixPtr);
+        mtxf_mul(pose->bones[part], gMatStack[gMatStackIndex + 1], inverse);
+        return;
+    }
+    if (!pose->active) {
+        for (s32 i = 0; i < 11; i++) { vec3f_copy(pose->rest[i], body->animPartsPos[sTpsNodeParts[i]]); }
+        pose->active = true;
+    }
+    const u8 *link = sTpsBoneLinks[part];
+    Vec3f from, to, axis;
+    vec3f_dif(from, pose->rest[link[2]], pose->rest[link[1]]);
+    vec3f_dif(to, body->tpsRagdollNodes[link[2]], body->tpsRagdollNodes[link[1]]);
+    f32 a = sqrtf(vec3f_dot(from, from)), b = sqrtf(vec3f_dot(to, to));
+    if (a < 0.001f || b < 0.001f) { return; }
+    for (s32 i = 0; i < 3; i++) { from[i] /= a; to[i] /= b; }
+    f32 cosine = fmaxf(-1.0f, fminf(1.0f, vec3f_dot(from, to)));
+    vec3f_cross(axis, from, to);
+    f32 sine = sqrtf(vec3f_dot(axis, axis));
+    if (sine < 0.0001f) {
+        Vec3f basis = {1,0,0};
+        if (fabsf(from[0]) > 0.9f) { basis[0] = 0; basis[1] = 1; }
+        vec3f_cross(axis, from, basis);
+        vec3f_normalize(axis);
+    } else {
+        for (s32 i = 0; i < 3; i++) { axis[i] /= sine; }
+    }
+    mtxf_copy(world, pose->bones[part]);
+    for (s32 row = 0; row < 3; row++) { tps_rotate_vector(world[row], pose->bones[part][row], axis, sine, cosine); }
+    Vec3f offset, rotated;
+    vec3f_dif(offset, pose->bones[part][3], pose->rest[link[0]]);
+    tps_rotate_vector(rotated, offset, axis, sine, cosine);
+    vec3f_sum(world[3], body->tpsRagdollNodes[link[0]], rotated);
+    mtxf_mul(gMatStack[gMatStackIndex + 1], world, *gCurGraphNodeCamera->matrixPtr);
+    mtxf_copy(gMatStackPrev[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1]);
+}
+
 /**
  * Render an animated part. The current animation state is not part of the node
  * but set in global variables. If an animated part is skipped, everything afterwards desyncs.
@@ -1199,6 +1274,8 @@ static void geo_process_animated_part(struct GraphNodeAnimatedPart *node) {
         mtxf_scale_vec3f(matrix, matrix, scale);
         mtxf_mul(gMatStackPrev[gMatStackIndex + 1], matrix, gMatStackPrev[gMatStackIndex]);
     );
+
+    tps_skin_bone();
 
     // Increment the matrix stack, If we fail to do so. Just return.
     if (!increment_mat_stack()) { return; }
@@ -1857,6 +1934,8 @@ static void geo_process_bone(struct GraphNodeBone *node) {
         mtxf_scale_vec3f(matrix, matrix, scale);
         mtxf_mul(gMatStackPrev[gMatStackIndex + 1], matrix, gMatStackPrev[gMatStackIndex]);
     );
+
+    tps_skin_bone();
 
     // Increment the matrix stack, If we fail to do so. Just return.
     if (!increment_mat_stack()) { return; }

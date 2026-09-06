@@ -1,3 +1,14 @@
+# Mario Arena — third-person shooter fork
+
+This personal-use fork adds a shoulder camera, hand-held pistol, Koopa bots,
+character ragdolls, kill/death scores and in-stage respawns to SM64coopdx.
+
+On the development Mac, double-click **Play Mario Arena.command** to host, or
+**Join Mario Arena.command** to connect. Build/setup, controls and multiplayer
+notes are in [the arena guide](docs/third-person-arena.md).
+
+---
+
 ![sm64coopdx Logo](textures/segment2/custom_coopdx_logo.rgba32.png)
 
 sm64coopdx is an online multiplayer project for the Super Mario 64 PC port that synchronizes all entities and every level for multiple players. The project was started by the Coop Deluxe Team. The purpose is to actively maintain and improve, but also continue sm64ex-coop, created by djoslin0. More features, customization, and power to the Lua API allow modders and players to enjoy Super Mario 64 more than ever!

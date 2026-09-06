@@ -4,6 +4,8 @@
 local ticks, previous, hits = 0, nil, 0
 -- Exclude real mouse clicks while the two windows are being opened/focused.
 djui_hud_get_mouse_buttons_down = function() return 0 end
+djui_hud_get_raw_mouse_x = function() return 0 end
+djui_hud_get_raw_mouse_y = function() return 0 end
 hook_event(HOOK_BEFORE_MARIO_UPDATE, function(m)
     if m.playerIndex ~= 0 then return end
     local me = gNetworkPlayers[0]
@@ -14,6 +16,7 @@ hook_event(HOOK_BEFORE_MARIO_UPDATE, function(m)
     end
     if not other then return end
     ticks=ticks+1
+    if ticks==1 and network_is_server() then FpsBots.count=0; FpsBots.reset() end
     if previous and m.health < previous then
         hits=hits+1
         print('TPS_PROBE HIT local='..me.globalIndex..' health='..m.health..' hits='..hits)
@@ -23,8 +26,9 @@ hook_event(HOOK_BEFORE_MARIO_UPDATE, function(m)
     m.pos.z = network_is_server() and 4664 or 4964
     m.vel.x, m.vel.y, m.vel.z, m.forwardVel = 0,0,0,0
     set_mario_action(m, ACT_IDLE, 0)
-    ThirdPersonCamera.pitch=0
-    ThirdPersonCamera.yaw=network_is_server() and 0 or math.pi
+    -- Solve the shoulder offset so the crosshair intersects the other torso.
+    ThirdPersonCamera.pitch=math.atan(-55,math.sqrt(300*300-65*65))
+    ThirdPersonCamera.yaw=(network_is_server() and 0 or math.pi)+math.asin(65/300)
     m.controller.buttonDown=0
     m.controller.buttonPressed=0
     if ticks==180 then

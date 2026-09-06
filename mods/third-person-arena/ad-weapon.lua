@@ -14,7 +14,7 @@ function W.grip(m,d)
     if FpsCombat.distance(wrist,m.pos)>250 then
         return {x=m.pos.x,y=m.pos.y+100,z=m.pos.z}
     end
-    local elbow=m.marioBodyState.animPartsPos[MARIO_ANIM_PART_RIGHT_FOREARM]
+    local elbow=m.marioBodyState.animPartsPos[MARIO_ANIM_PART_RIGHT_FOREARM+1]
     local dx,dy,dz=wrist.x-elbow.x,wrist.y-elbow.y,wrist.z-elbow.z
     local length=math.max(0.001,math.sqrt(dx*dx+dy*dy+dz*dz))
     return {x=wrist.x+dx/length*8,y=wrist.y+dy/length*8,z=wrist.z+dz/length*8}
@@ -36,10 +36,22 @@ function W.muzzle(m,d)
         z=pos.z+(d.z*54+up.z*16)*W.scale}
 end
 
-function W.flash(m,d)
-    local pos=W.muzzle(m,d)
+function W.flash_at(pos)
     local o=FpsRagdoll.object(E_MODEL_EXPLOSION,pos,0.25)
     if o then W.flashes[#W.flashes+1]={o=o,expires=get_global_timer()+3} end
+end
+
+function W.flash(m,d) W.flash_at(W.muzzle(m,d)) end
+function W.tracer(p)
+    if not FpsCombat.finite(p.distance) then return end
+    local length=math.max(0,math.min(p.distance,1800))
+    -- Short-lived beads make the hitscan direction visible without colliders.
+    for step=1,math.min(18,math.floor(length/60)) do
+        local t=step*60
+        local o=FpsRagdoll.object(E_MODEL_YELLOW_SPHERE,
+            {x=p.ox+p.dx*t,y=p.oy+p.dy*t,z=p.oz+p.dz*t},0.035)
+        if o then W.flashes[#W.flashes+1]={o=o,expires=get_global_timer()+3} end
+    end
 end
 
 local function update()
@@ -76,11 +88,18 @@ local poses={
     [MARIO_ANIM_GENERAL_FALL]=MARIO_ANIM_FALL_WITH_LIGHT_OBJ,
     [MARIO_ANIM_LAND_FROM_SINGLE_JUMP]=MARIO_ANIM_JUMP_LAND_WITH_LIGHT_OBJ,
 }
+local characterPoses={}
 function W.pose(m)
     if not FpsArena or not FpsArena.active(m.playerIndex) then return end
     if m.playerIndex==0 and not ThirdPersonCamera.enabled then return end
     local info=m.marioObj.header.gfx.animInfo
-    local pose=poses[info.animID]
+    local kind=m.character and m.character.type or 0
+    if not characterPoses[kind] then
+        local map={}
+        for native,holding in pairs(poses) do map[get_character_anim(m,native)]=get_character_anim(m,holding) end
+        characterPoses[kind]=map
+    end
+    local pose=characterPoses[kind][info.animID]
     if not pose then return end
     -- Carry over the native frame so walking does not reset to frame zero.
     local frame,assist,accel=info.animFrame,info.animFrameAccelAssist,info.animAccel
@@ -93,14 +112,20 @@ function W.pose(m)
         info.animAccel=accel
     end
     m.marioBodyState.handState=MARIO_HAND_FISTS
-    if m.action==ACT_IDLE then
-        local yaw=m.playerIndex==0 and ThirdPersonCamera.yaw or gPlayerSyncTable[m.playerIndex].tpsYaw
-        if yaw then
-            local angle=math.floor(yaw*32768/math.pi)%65536
-            if angle>=32768 then angle=angle-65536 end
-            m.faceAngle.y=angle
-            m.marioObj.header.gfx.angle.y=angle
-        end
+    local sync=gPlayerSyncTable[m.playerIndex]
+    local yaw=m.playerIndex==0 and ThirdPersonCamera.yaw or sync.tpsYaw
+    local pitch=m.playerIndex==0 and ThirdPersonCamera.pitch or (sync.tpsPitch or 0)
+    if yaw then
+        local angle=math.floor(yaw*32768/math.pi)%65536
+        if angle>=32768 then angle=angle-65536 end
+        -- Face the aim visually while native faceAngle continues driving SM64
+        -- movement. This allows strafing without pointing the arms sideways.
+        m.marioObj.header.gfx.angle.y=angle
+        if m.action==ACT_IDLE then m.faceAngle.y=angle end
+        m.marioBodyState.allowPartRotation=1
+        m.marioBodyState.torsoAngle.x=math.floor(-pitch*32768/math.pi*0.65)
+        m.marioBodyState.torsoAngle.y=0
+        m.marioBodyState.torsoAngle.z=0
     end
 end
 
@@ -127,8 +152,16 @@ end
 -- Restore the underlying animation before action code runs; otherwise native
 -- walking would restart each tick after seeing the holding animation's ID.
 hook_event(HOOK_BEFORE_MARIO_UPDATE,function(m)
+    if FpsArena and FpsArena.active(m.playerIndex) and (m.playerIndex~=0 or ThirdPersonCamera.enabled) then
+        if m.action==ACT_IDLE then m.actionState,m.actionTimer=0,0 end
+        if m.action==ACT_START_SLEEPING or m.action==ACT_SLEEPING or m.action==ACT_WAKING_UP then
+            set_mario_action(m,ACT_IDLE,0)
+        end
+    end
     local saved=W.native[m.playerIndex]
     if not saved then return end
+    m.marioBodyState.allowPartRotation=0
+    m.marioBodyState.torsoAngle.x,m.marioBodyState.torsoAngle.y,m.marioBodyState.torsoAngle.z=0,0,0
     local info=m.marioObj.header.gfx.animInfo
     if info.animID==saved.pose then
         local frame,assist,accel=info.animFrame,info.animFrameAccelAssist,info.animAccel

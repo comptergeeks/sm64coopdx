@@ -1089,6 +1089,8 @@
 --- @field public heldObjLastPosition Vec3f
 --- @field public animPartsPos Vec3f[]
 --- @field public animPartsRot Vec3s[]
+--- @field public tpsRagdoll boolean
+--- @field public tpsRagdollNodes Vec3f[]
 --- @field public currAnimPart integer
 --- @field public updateTorsoTime integer
 --- @field public updateHeadPosTime integer

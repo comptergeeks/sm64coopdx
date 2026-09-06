@@ -55,18 +55,52 @@ function R.object(model, pos, scale)
     return spawn_non_sync_object(behavior,model,pos.x,pos.y,pos.z,function(o) obj_scale(o,scale) end)
 end
 
-function R.spawn(pos,yaw,direction,koopa)
+function R.spawn(pos,yaw,direction,koopa,m)
     if #R.bodies>=8 then
         local old=table.remove(R.bodies,1)
+        if old.player~=nil then gMarioStates[old.player].marioBodyState.tpsRagdoll=false end
         for _,o in ipairs(old.objects) do obj_mark_for_deletion(o) end
     end
     local body=R.skeleton(pos,yaw,{x=direction.x*17,y=12+direction.y*10,z=direction.z*17})
     body.objects={}
+    if m then
+        local parts={MARIO_ANIM_PART_BUTT,MARIO_ANIM_PART_TORSO,MARIO_ANIM_PART_HEAD,
+            MARIO_ANIM_PART_LEFT_FOREARM,MARIO_ANIM_PART_LEFT_HAND,
+            MARIO_ANIM_PART_RIGHT_FOREARM,MARIO_ANIM_PART_RIGHT_HAND,
+            MARIO_ANIM_PART_LEFT_LEG,MARIO_ANIM_PART_LEFT_FOOT,
+            MARIO_ANIM_PART_RIGHT_LEG,MARIO_ANIM_PART_RIGHT_FOOT}
+        for i,part in ipairs(parts) do
+            local p=m.marioBodyState.animPartsPos[part+1]
+            local n=body.nodes[i]
+            n.radius=(i<=3) and 28 or 10
+            if FpsCombat.distance(p,pos)<300 then
+                n.x,n.y,n.z=p.x,p.y,p.z
+                n.px,n.py,n.pz=p.x-direction.x*17,p.y-12,p.z-direction.z*17
+            end
+        end
+        for _,link in ipairs(body.links) do link[3]=FpsCombat.distance(body.nodes[link[1]],body.nodes[link[2]]) end
+        body.player=m.playerIndex
+        m.marioBodyState.tpsRagdoll=true
+        for i,n in ipairs(body.nodes) do
+            local p=m.marioBodyState.tpsRagdollNodes[i]
+            p.x,p.y,p.z=n.x,n.y,n.z
+        end
+        R.bodies[#R.bodies+1]=body
+        return
+    end
     for i,p in ipairs(body.nodes) do
         local model=E_MODEL_METALLIC_BALL
         local scale=(i==1 or i==2) and 0.32 or 0.16
-        if i==1 and koopa then model,scale=E_MODEL_KOOPA_SHELL,0.85 end
-        if i==3 then model,scale=koopa and E_MODEL_YELLOW_SPHERE or E_MODEL_MARIOS_CAP,koopa and 0.6 or 1 end
+        if koopa and E_MODEL_TPS_KOOPA_BODY then
+            local models={E_MODEL_TPS_KOOPA_BODY,E_MODEL_METALLIC_BALL,E_MODEL_TPS_KOOPA_HEAD,
+                E_MODEL_TPS_KOOPA_ARM,E_MODEL_TPS_KOOPA_HAND,E_MODEL_TPS_KOOPA_ARM,E_MODEL_TPS_KOOPA_HAND,
+                E_MODEL_TPS_KOOPA_LEG,E_MODEL_TPS_KOOPA_FOOT,E_MODEL_TPS_KOOPA_LEG,E_MODEL_TPS_KOOPA_FOOT}
+            model,scale=models[i],i==2 and 0.001 or 0.4
+            body.koopa=true; body.yaw=yaw
+        else
+            if i==1 and koopa then model,scale=E_MODEL_KOOPA_SHELL,0.85 end
+            if i==3 then model,scale=koopa and E_MODEL_YELLOW_SPHERE or E_MODEL_MARIOS_CAP,koopa and 0.6 or 1 end
+        end
         body.objects[i]=R.object(model,p,scale)
         if not body.objects[i] then
             for _,o in pairs(body.objects) do obj_mark_for_deletion(o) end
@@ -78,8 +112,9 @@ end
 
 local function collide(p)
     local floor=find_floor_height(p.x,math.max(p.y,p.py)+35,p.z)
-    if floor>-10000 and p.y<floor+12 then
-        p.y=floor+12
+    local radius=p.radius or 12
+    if floor>-10000 and p.y<floor+radius then
+        p.y=floor+radius
         p.px=p.x-(p.x-p.px)*0.72
         p.pz=p.z-(p.z-p.pz)*0.72
         p.py=p.y
@@ -96,16 +131,36 @@ end
 function R.update()
     for i=#R.bodies,1,-1 do
         local body=R.bodies[i]
-        if body.age>=300 then
+        if (body.player==nil and body.age>=300) or (body.player~=nil and not gPlayerSyncTable[body.player].tpsDead) then
+            if body.player~=nil then gMarioStates[body.player].marioBodyState.tpsRagdoll=false end
             for _,o in ipairs(body.objects) do obj_mark_for_deletion(o) end
             table.remove(R.bodies,i)
         else
             -- Stop the costly solver after settling; the body remains until expiry.
             if body.age<120 then R.step(body,collide) else body.age=body.age+1 end
+            if body.player~=nil then
+                local m=gMarioStates[body.player]
+                for j,n in ipairs(body.nodes) do
+                    local p=m.marioBodyState.tpsRagdollNodes[j]
+                    p.x,p.y,p.z=n.x,n.y,n.z
+                end
+            end
             for j,o in ipairs(body.objects) do
                 local p=body.nodes[j]
                 o.oPosX,o.oPosY,o.oPosZ=p.x,p.y,p.z
-                if j==1 or j==3 then o.oFaceAngleRoll=(body.nodes[2].x-body.nodes[1].x)*150 end
+                if body.koopa then
+                    local target=({[1]=2,[3]=2,[4]=5,[6]=7,[8]=9,[10]=11})[j]
+                    if target then
+                        local q=body.nodes[target]
+                        local dx,dy,dz=q.x-p.x,q.y-p.y,q.z-p.z
+                        if j==3 then dx,dy,dz=-dx,-dy,-dz end
+                        o.oFaceAngleYaw=atan2s(dx,-dz)
+                        o.oFaceAngleRoll=atan2s(math.sqrt(dx*dx+dz*dz),dy)
+                    else
+                        o.oFaceAngleYaw=body.yaw*32768/math.pi+16384
+                        o.oFaceAngleRoll=16384
+                    end
+                elseif j==1 or j==3 then o.oFaceAngleRoll=(body.nodes[2].x-body.nodes[1].x)*150 end
             end
         end
     end
@@ -117,4 +172,5 @@ function R.clear()
         for _,o in ipairs(body.objects) do obj_mark_for_deletion(o) end
     end
     R.bodies={}
+    if gMarioStates then for i=0,MAX_PLAYERS-1 do gMarioStates[i].marioBodyState.tpsRagdoll=false end end
 end

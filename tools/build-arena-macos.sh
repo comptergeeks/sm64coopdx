@@ -10,6 +10,8 @@ import shutil
 
 root = Path('build/us_pc').resolve()
 shutil.copytree('mods/third-person-arena', root / 'mods' / 'third-person-arena', dirs_exist_ok=True)
+# A normal build must never retain an automated firing/teleport test fixture.
+(root / 'mods' / 'third-person-arena' / 'a-probe.lua').unlink(missing_ok=True)
 app = root / 'Mario Arena.app' / 'Contents'
 (app / 'MacOS').mkdir(parents=True, exist_ok=True)
 (app / 'Resources').mkdir(exist_ok=True)

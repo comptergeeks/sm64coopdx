@@ -42,12 +42,18 @@ end
 function T.update(m)
     if not T.enabled or m.playerIndex~=0 or not m.area then return end
     -- Cutscenes/menus keep their native camera and never enter first person.
-    if first_person_check_cancels(m) then camera_unfreeze(); return end
+    local dead=FpsMatch and FpsMatch.dead
+    if not dead and first_person_check_cancels(m) then camera_unfreeze(); return end
     camera_freeze()
     local cp=math.cos(T.pitch)
     local d={x=math.sin(T.yaw)*cp,y=math.sin(T.pitch),z=math.cos(T.yaw)*cp}
     T.direction=d
-    local anchor={x=m.pos.x,y=m.pos.y+(mario_is_crouching(m) and 85 or 130),z=m.pos.z}
+    local subject=m.pos
+    if dead and m.marioBodyState.tpsRagdoll then
+        local p=m.marioBodyState.tpsRagdollNodes[1]
+        subject={x=p.x,y=p.y-50,z=p.z}
+    end
+    local anchor={x=subject.x,y=subject.y+(mario_is_crouching(m) and 85 or 130),z=subject.z}
     local offset={x=-d.x*380-math.cos(T.yaw)*T.shoulder,
         y=-d.y*380+25,z=-d.z*380+math.sin(T.yaw)*T.shoulder}
     local length=math.sqrt(offset.x^2+offset.y^2+offset.z^2)

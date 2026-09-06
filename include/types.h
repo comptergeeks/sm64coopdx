@@ -428,6 +428,8 @@ struct MarioBodyState
 
     Vec3f animPartsPos[MARIO_ANIM_PART_MAX];
     Vec3s animPartsRot[MARIO_ANIM_PART_MAX];
+    bool tpsRagdoll; /// opt-in physics pose; ordinary character rendering is unchanged
+    Vec3f tpsRagdollNodes[11];
     u32 currAnimPart;
 
     u32 updateTorsoTime;

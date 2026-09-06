@@ -8795,7 +8795,13 @@ E_MODEL_WARIOS_METAL_CAP                   = 378 --- @type ModelExtendedId
 E_MODEL_WARIOS_WING_CAP                    = 379 --- @type ModelExtendedId
 E_MODEL_WARIOS_WINGED_METAL_CAP            = 380 --- @type ModelExtendedId
 E_MODEL_TPS_PISTOL                         = 381 --- @type ModelExtendedId
-E_MODEL_MAX                                = 382 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_BODY                     = 382 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_HEAD                     = 383 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_ARM                      = 384 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_HAND                     = 385 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_LEG                      = 386 --- @type ModelExtendedId
+E_MODEL_TPS_KOOPA_FOOT                     = 387 --- @type ModelExtendedId
+E_MODEL_MAX                                = 388 --- @type ModelExtendedId
 
 --- @alias ModelExtendedId
 --- | `E_MODEL_NONE`
@@ -9180,6 +9186,12 @@ E_MODEL_MAX                                = 382 --- @type ModelExtendedId
 --- | `E_MODEL_WARIOS_WING_CAP`
 --- | `E_MODEL_WARIOS_WINGED_METAL_CAP`
 --- | `E_MODEL_TPS_PISTOL`
+--- | `E_MODEL_TPS_KOOPA_BODY`
+--- | `E_MODEL_TPS_KOOPA_HEAD`
+--- | `E_MODEL_TPS_KOOPA_ARM`
+--- | `E_MODEL_TPS_KOOPA_HAND`
+--- | `E_MODEL_TPS_KOOPA_LEG`
+--- | `E_MODEL_TPS_KOOPA_FOOT`
 --- | `E_MODEL_MAX`
 
 --- @type integer

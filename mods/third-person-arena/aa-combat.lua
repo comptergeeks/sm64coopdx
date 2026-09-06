@@ -84,3 +84,13 @@ function C.admit(history, p, tick)
     history[p.shooter] = {seq=p.seq, tick=tick}
     return true
 end
+
+-- Flat, non-hazardous ground for bots and recorded respawn points.
+function FpsCombat.safe_surface(surface)
+    if not surface or not surface.normal or surface.normal.y<0.65 then return false end
+    local kind=surface.type
+    if kind==SURFACE_DEATH_PLANE or kind==SURFACE_BURNING then return false end
+    -- Native quicksand surface IDs, including the instant moving variant.
+    if type(kind)=='number' and ((kind>=0x21 and kind<=0x27) or kind==0x2D) then return false end
+    return true
+end
