@@ -1,0 +1,24 @@
+name: First Person Arena logic
+
+on:
+  push:
+    paths:
+      - 'mods/first-person-arena/**'
+      - 'tests/first-person-arena.lua'
+      - '.github/workflows/fps-tests.yaml'
+  pull_request:
+    paths:
+      - 'mods/first-person-arena/**'
+      - 'tests/first-person-arena.lua'
+      - '.github/workflows/fps-tests.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  combat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y lua5.3
+      - run: lua5.3 tests/first-person-arena.lua
