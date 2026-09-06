@@ -48,6 +48,11 @@ local function restore_camera()
     ThirdPersonCamera.disable()
 end
 
+local function hit_point(p)
+    if not C.finite(p.distance) or p.distance<0 or p.distance>C.RANGE then return nil end
+    return {x=p.ox+p.dx*p.distance,y=p.oy+p.dy*p.distance,z=p.oz+p.dz*p.distance}
+end
+
 local function receive_result(p)
     if not C.valid_shot(p) or not C.finite(p.victim) or not C.finite(p.victimEpoch) then return end
     local botShot=FpsBots and FpsBots.is_id(p.shooter)
@@ -67,7 +72,7 @@ local function receive_result(p)
         ledgerReceived[p.shooter]={epoch=p.epoch,seq=p.seq}
         local victim=network_player_from_global_index(p.victim)
         if victim and victim.currLevelAreaSeqId==p.victimEpoch and C.same_area(victim,shooter) then
-            FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz})
+            FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz},hit_point(p))
         end
     end
     local me = gNetworkPlayers[0]
@@ -84,7 +89,7 @@ local function receive_result(p)
     if p.victim ~= me.globalIndex or p.victimEpoch ~= me.currLevelAreaSeqId or not active(0) then return end
     local m = gMarioStates[0]
     if m.invincTimer > 0 then return end
-    if FpsMatch then FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz}) end
+    if FpsMatch then FpsMatch.record_hit(p.victim,p.shooter,p.victimEpoch,{x=p.dx,y=p.dy,z=p.dz},hit_point(p)) end
     m.health = math.max(0xFF, m.health-(botShot and 0x100 or C.DAMAGE))
     m.invincTimer = 20
     -- Nonlethal hits use native knockback; lethal hits enter the match ragdoll.
@@ -132,7 +137,7 @@ function FpsArena.bot_shot(bot,origin,direction)
         epoch=gNetworkPlayers[0].currLevelAreaSeqId,botGeneration=bot.generation,
         victim=victim,victimEpoch=targetNp.currLevelAreaSeqId,
         ox=origin.x,oy=origin.y,oz=origin.z,dx=direction.x,dy=direction.y,dz=direction.z}
-    if FpsMatch then FpsMatch.record_hit(victim,id,targetNp.currLevelAreaSeqId,direction) end
+    if FpsMatch then FpsMatch.record_hit(victim,id,targetNp.currLevelAreaSeqId,direction,hit_point(p)) end
     network_send(true,p)
     receive_result(p)
 end
@@ -155,7 +160,7 @@ local function resolve_shot(p)
     local victimEpoch = -1
     if victim and FpsBots and FpsBots.is_id(victim) then
         victimEpoch=FpsBots.generation(victim) or -1
-        if not FpsBots.damage(victim,direction) then victim=nil
+        if not FpsBots.damage(victim,direction,hit_point(p)) then victim=nil
         elseif FpsMatch and FpsBots.bots[victim-MAX_PLAYERS+1].hp==0 then FpsMatch.bot_kill(p.shooter,victim) end
     elseif victim then
         local targetNp = network_player_from_global_index(victim)
@@ -167,7 +172,7 @@ local function resolve_shot(p)
             victimCooldown[victim] = tick()+20
         end
     end
-    if victim and FpsMatch and not (FpsBots and FpsBots.is_id(victim)) then FpsMatch.record_hit(victim,p.shooter,victimEpoch,direction) end
+    if victim and FpsMatch and not (FpsBots and FpsBots.is_id(victim)) then FpsMatch.record_hit(victim,p.shooter,victimEpoch,direction,hit_point(p)) end
     p.protocol, p.kind, p.victim, p.victimEpoch = PROTOCOL, 'result', victim or -1, victimEpoch
     network_send(true, p)
     receive_result(p)

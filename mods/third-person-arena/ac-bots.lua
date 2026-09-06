@@ -29,7 +29,7 @@ local function destroy_visuals()
 end
 
 local function publish(bot)
-    for _,field in ipairs({'x','y','z','yaw','hp','generation','death','dx','dy','dz','flash'}) do
+    for _,field in ipairs({'x','y','z','yaw','hp','generation','death','dx','dy','dz','flash','hx','hy','hz','vx','vy','vz'}) do
         put(bot.index,field,bot[field] or 0)
     end
 end
@@ -92,11 +92,13 @@ function B.targets()
     return targets
 end
 
-function B.damage(id,direction)
+function B.damage(id,direction,point)
     local bot=B.bots[id-MAX_PLAYERS+1]
     if not bot or bot.hp<=0 then return false end
     bot.hp=bot.hp-1
     bot.dx,bot.dy,bot.dz=direction.x,direction.y,direction.z
+    point=point or {x=bot.x,y=bot.y+100,z=bot.z}
+    bot.hx,bot.hy,bot.hz=point.x,point.y,point.z
     bot.cooldown=get_global_timer()+75 -- hit-stun gives the player breathing room
     if bot.hp==0 then
         bot.death=bot.generation
@@ -121,6 +123,7 @@ local function nearest(bot)
 end
 
 local function move(bot,target,distance)
+    bot.vx,bot.vy,bot.vz=0,0,0
     local dx,dz=target.pos.x-bot.x,target.pos.z-bot.z
     local length=math.sqrt(dx*dx+dz*dz)
     if length<1 then return end
@@ -136,7 +139,10 @@ local function move(bot,target,distance)
     if lengthMove<0.1 then return end
     local wall=collision_find_surface_on_ray(bot.x,bot.y+65,bot.z,
         vx/lengthMove*(lengthMove+50),0,vz/lengthMove*(lengthMove+50))
-    if not wall.surface then bot.x,bot.y,bot.z=x,floor,z end
+    if not wall.surface then
+        bot.vx,bot.vy,bot.vz=x-bot.x,floor-bot.y,z-bot.z
+        bot.x,bot.y,bot.z=x,floor,z
+    end
 end
 
 local function host_update()
@@ -220,7 +226,9 @@ local function render_update()
             local pos={x=get(index,'x'),y=get(index,'y'),z=get(index,'z')}
             if pos.x and pos.y and pos.z then
                 FpsRagdoll.spawn(pos,(get(index,'yaw') or 0)*math.pi/32768,
-                    {x=get(index,'dx') or 0,y=get(index,'dy') or 0,z=get(index,'dz') or 0},true)
+                    {x=get(index,'dx') or 0,y=get(index,'dy') or 0,z=get(index,'dz') or 0},true,nil,
+                    {point={x=get(index,'hx') or pos.x,y=get(index,'hy') or pos.y+100,z=get(index,'hz') or pos.z},
+                        velocity={x=get(index,'vx') or 0,y=get(index,'vy') or 0,z=get(index,'vz') or 0},kind='blaster'})
             end
         end
     end

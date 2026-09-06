@@ -88,3 +88,6 @@ holding poses/ragdolls/respawns; bidirectional two-player hits; multiplayer leth
 hits, scoring, respawn and stage travel; and three-process combat in an area away
 from the host, including global score propagation. Remote internet latency has
 not been play-tested with a friend.
+
+Death reactions now use localized, momentum-preserving impulses and settle based
+on ground contact. See [Battlefront-inspired impact research and tuning](ragdoll-impact-research.md).

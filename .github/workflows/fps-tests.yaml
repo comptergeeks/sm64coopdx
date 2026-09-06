@@ -6,12 +6,14 @@ on:
       - 'mods/third-person-arena/**'
       - 'tests/third-person-arena.lua'
       - 'tests/tps-weapon.lua'
+      - 'tests/tps-ragdoll-impact.lua'
       - '.github/workflows/fps-tests.yaml'
   pull_request:
     paths:
       - 'mods/third-person-arena/**'
       - 'tests/third-person-arena.lua'
       - 'tests/tps-weapon.lua'
+      - 'tests/tps-ragdoll-impact.lua'
       - '.github/workflows/fps-tests.yaml'
 
 permissions:
@@ -25,3 +27,4 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y lua5.3
       - run: lua5.3 tests/third-person-arena.lua
       - run: lua5.3 tests/tps-weapon.lua
+      - run: lua5.3 tests/tps-ragdoll-impact.lua

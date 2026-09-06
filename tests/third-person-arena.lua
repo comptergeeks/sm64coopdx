@@ -247,8 +247,14 @@ dofile('mods/third-person-arena/af-match.lua')
 local me=gMarioStates[0]
 me.numLives=4; me.marioObj.header.gfx.node={flags=0}
 FpsMatch.spawns={{x=10,y=20,z=30}}
-FpsMatch.record_hit(0,1,gNetworkPlayers[0].currLevelAreaSeqId,{x=0,y=0,z=1})
+me.vel={x=6,y=3,z=0}
+FpsMatch.record_hit(0,1,gNetworkPlayers[0].currLevelAreaSeqId,{x=0,y=0,z=1},{x=10,y=100,z=20})
+me.vel={x=-45,y=25,z=0} -- native knockback must not replace pre-hit momentum
 FpsMatch.begin(me)
+check(gPlayerSyncTable[0].tpsDeathVX==6 and gPlayerSyncTable[0].tpsDeathVY==3,
+    'death synchronization preserves movement from before native knockback')
+check(gPlayerSyncTable[0].tpsDeathHX==10 and gPlayerSyncTable[0].tpsDeathHY==100,
+    'death synchronization carries the actual impact point')
 check(FpsMatch.dead and gPlayerSyncTable[0].tpsDead and not FpsArena.active(0),
     'eliminated player leaves combat during countdown')
 check(gGlobalSyncTable.tpsDeaths0==1 and gGlobalSyncTable.tpsKills1==1,

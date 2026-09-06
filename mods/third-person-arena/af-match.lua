@@ -4,8 +4,13 @@ local M=FpsMatch
 local function now() return get_global_timer() end
 local function copy(p) return {x=p.x,y=p.y,z=p.z} end
 local function score(kind,id) return 'tps'..kind..id end
-function M.record_hit(victim,killer,epoch,direction)
-    M.lastHit[victim]={killer=killer,epoch=epoch,time=now(),direction=direction}
+function M.record_hit(victim,killer,epoch,direction,point)
+    local np=network_player_from_global_index(victim)
+    local m=np and gMarioStates[np.localIndex]
+    local v=m and m.vel or {x=0,y=0,z=0}
+    -- Capture before native knockback overwrites movement velocity.
+    M.lastHit[victim]={killer=killer,epoch=epoch,time=now(),direction=direction,point=point,
+        velocity={x=v.x or 0,y=v.y or 0,z=v.z or 0}}
 end
 function M.record_death(p)
     if not network_is_server() or not FpsCombat.finite(p.victim) or not FpsCombat.finite(p.serial)
@@ -41,8 +46,14 @@ function M.begin(m)
     s.tpsDeathYaw=m.faceAngle.y
     s.tpsDeathEpoch=np.currLevelAreaSeqId
     local hit=M.lastHit[np.globalIndex]
+    if hit and (hit.epoch~=np.currLevelAreaSeqId or now()-hit.time>150) then hit=nil end
     local d=hit and hit.direction or ThirdPersonCamera.direction
     s.tpsDeathDX,s.tpsDeathDY,s.tpsDeathDZ=d.x,d.y,d.z
+    local point=hit and hit.point or {x=m.pos.x,y=m.pos.y+100,z=m.pos.z}
+    local velocity=hit and hit.velocity or m.vel
+    s.tpsDeathHX,s.tpsDeathHY,s.tpsDeathHZ=point.x,point.y,point.z
+    s.tpsDeathVX,s.tpsDeathVY,s.tpsDeathVZ=velocity.x or 0,velocity.y or 0,velocity.z or 0
+    s.tpsDeathKind=hit and 'blaster' or 'fall'
     s.tpsDead=true
     local p={protocol='tps-arena-v1',kind='death',victim=np.globalIndex,
         serial=s.tpsDeathSerial,epoch=np.currLevelAreaSeqId}
@@ -110,7 +121,9 @@ function M.update()
             if s.tpsDeathX and s.tpsDeathY and s.tpsDeathZ then
                 FpsRagdoll.spawn({x=s.tpsDeathX,y=s.tpsDeathY,z=s.tpsDeathZ},
                     (s.tpsDeathYaw or 0)*math.pi/32768,
-                    {x=s.tpsDeathDX or 0,y=s.tpsDeathDY or 0.3,z=s.tpsDeathDZ or 1},false,gMarioStates[i])
+                    {x=s.tpsDeathDX or 0,y=s.tpsDeathDY or 0.3,z=s.tpsDeathDZ or 1},false,gMarioStates[i],
+                    {point={x=s.tpsDeathHX or s.tpsDeathX,y=s.tpsDeathHY or s.tpsDeathY+100,z=s.tpsDeathHZ or s.tpsDeathZ},
+                        velocity={x=s.tpsDeathVX or 0,y=s.tpsDeathVY or 0,z=s.tpsDeathVZ or 0},kind=s.tpsDeathKind})
             end
         end
     end
