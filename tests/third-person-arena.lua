@@ -228,7 +228,7 @@ FpsRagdoll.clear()
 check(#FpsRagdoll.bodies==0,'ragdoll cleanup releases all body handles')
 -- Attack bindings must be consumed before native action input is calculated.
 commands.tps()
-FpsWeapon={muzzle=function(m) return {x=m.pos.x,y=m.pos.y+110,z=m.pos.z} end,flash=function() end}
+FpsWeapon={muzzle=function(m) return {x=m.pos.x,y=m.pos.y+110,z=m.pos.z} end,flash=function() end,flash_at=function() end}
 local controller=gMarioStates[0].controller
 controller.buttonDown=B_BUTTON|R_TRIG|1
 controller.buttonPressed=B_BUTTON|R_TRIG|1
@@ -240,6 +240,20 @@ controller.buttonPressed=B_BUTTON
 hooks.HOOK_BEFORE_MARIO_UPDATE(gMarioStates[0])
 check(controller.buttonDown==0 and controller.buttonPressed==0,
     'cooldown also consumes B so repeated fire cannot punch')
+-- A camera aim point behind the barrel must not reverse the outgoing ray.
+local savedCameraPos,savedCameraDirection=ThirdPersonCamera.pos,ThirdPersonCamera.direction
+ThirdPersonCamera.pos={x=gMarioStates[0].pos.x,y=gMarioStates[0].pos.y+110,z=gMarioStates[0].pos.z-7000}
+ThirdPersonCamera.direction={x=0,y=0,z=1}
+now=now+20
+local flashed
+FpsWeapon.flash_at=function(p) flashed=p end
+controller.buttonDown=B_BUTTON
+hooks.HOOK_BEFORE_MARIO_UPDATE(gMarioStates[0])
+local outgoing=sent[#sent]
+check(outgoing.dz>0,'aim point behind muzzle cannot reverse shot')
+check(flashed and flashed.x==outgoing.ox and flashed.y==outgoing.oy and flashed.z==outgoing.oz,
+    'muzzle flash and bullet share the exact shot origin')
+ThirdPersonCamera.pos,ThirdPersonCamera.direction=savedCameraPos,savedCameraDirection
 -- Match lifecycle regression: a death is scored once and respawns in-area.
 gPlayerSyncTable={ [0]={},[1]={},[2]={} }
 HOOK_ON_DEATH,ACT_DISAPPEARED,ACT_FREEFALL,GRAPH_RENDER_ACTIVE='HOOK_ON_DEATH',100,101,1

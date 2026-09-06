@@ -83,7 +83,7 @@ local function receive_result(p)
     received[p.shooter] = p.seq
     if FpsWeapon and FpsWeapon.tracer then FpsWeapon.tracer(p) end
     if not botShot and p.shooter~=me.globalIndex and FpsWeapon then
-        FpsWeapon.flash(gMarioStates[shooter.localIndex],{x=p.dx,y=p.dy,z=p.dz})
+        FpsWeapon.flash_at({x=p.ox,y=p.oy,z=p.oz})
     end
     if p.shooter == me.globalIndex and p.victim >= 0 then hitUntil = tick()+6 end
     if p.victim ~= me.globalIndex or p.victimEpoch ~= me.currLevelAreaSeqId or not active(0) then return end
@@ -195,11 +195,16 @@ local function fire()
         origin.x-m.pos.x,origin.y-(m.pos.y+90),origin.z-m.pos.z)
     if obstruction.surface then origin={x=m.pos.x,y=m.pos.y+90,z=m.pos.z} end
     local dx,dy,dz=aim.x-origin.x,aim.y-origin.y,aim.z-origin.z
+    -- A shoulder-camera hit can be behind the muzzle at point-blank range.
+    -- Never turn the shot back toward the player to converge on that point.
+    if dx*camera.direction.x+dy*camera.direction.y+dz*camera.direction.z<=0 then
+        dx,dy,dz=camera.direction.x,camera.direction.y,camera.direction.z
+    end
     local length = math.max(0.001,math.sqrt(dx*dx+dy*dy+dz*dz))
     local p = {protocol=PROTOCOL, kind='shot', shooter=np.globalIndex, seq=sequence,
         epoch=np.currLevelAreaSeqId, ox=origin.x, oy=origin.y, oz=origin.z,
         dx=dx/length, dy=dy/length, dz=dz/length}
-    FpsWeapon.flash(m,{x=p.dx,y=p.dy,z=p.dz})
+    FpsWeapon.flash_at(origin)
     play_sound(SOUND_OBJ_POUNDING_CANNON, m.marioObj.header.gfx.cameraToObject)
     if host.localIndex==0 then resolve_shot(p) else network_send_to(host.localIndex, true, p) end
 end

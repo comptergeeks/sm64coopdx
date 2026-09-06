@@ -51,9 +51,9 @@ function W.update_tracers()
             for _,o in ipairs(shot.objects) do obj_mark_for_deletion(o) end
             table.remove(W.tracers,i)
         else
-            local head=shot.distance*math.min(1,(age+1)/shot.duration)
+            local head=shot.distance*math.min(1,age/(shot.duration-1))
             for j,o in ipairs(shot.objects) do
-                local t=math.max(0,head-(j-1)*22)
+                local t=math.max(0,head-(j-1)*8)
                 o.oPosX,o.oPosY,o.oPosZ=shot.ox+shot.dx*t,shot.oy+shot.dy*t,shot.oz+shot.dz*t
                 o.header.gfx.pos.x,o.header.gfx.pos.y,o.header.gfx.pos.z=o.oPosX,o.oPosY,o.oPosZ
             end
@@ -71,8 +71,8 @@ function W.tracer(p)
     end
     local shot={distance=p.distance,ox=p.ox,oy=p.oy,oz=p.oz,dx=p.dx,dy=p.dy,dz=p.dz,
         started=get_global_timer(),duration=math.max(6,math.ceil(p.distance/650)),objects={}}
-    for j=1,6 do
-        local o=FpsRagdoll.object(E_MODEL_YELLOW_SPHERE,{x=p.ox,y=p.oy,z=p.oz},0.38-(j-1)*0.045)
+    for j=1,4 do
+        local o=FpsRagdoll.object(E_MODEL_YELLOW_SPHERE,{x=p.ox,y=p.oy,z=p.oz},0.10-(j-1)*0.018)
         if o then
             obj_set_billboard(o)
             shot.objects[#shot.objects+1]=o

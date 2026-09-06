@@ -167,7 +167,9 @@ local function host_update()
                         bot.cooldown=now+90+index*10
                         -- Aim is deliberately imperfect; dodging and strafing should work.
                         local aim={x=target.pos.x+math.sin(now*0.13+index)*55,y=target.pos.y+90,z=target.pos.z}
-                        local origin={x=bot.x,y=bot.y+80,z=bot.z}
+                        -- Match the rendered pistol's +Z barrel tip, including its side offset.
+                        local origin={x=bot.x+sins(bot.yaw)*52.4-coss(bot.yaw)*40,
+                            y=bot.y+79.6,z=bot.z+coss(bot.yaw)*52.4+sins(bot.yaw)*40}
                         local length=C.distance(origin,aim)
                         if length>1 then
                             FpsArena.bot_shot(bot,origin,{x=(aim.x-origin.x)/length,

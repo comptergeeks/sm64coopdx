@@ -54,10 +54,15 @@ FpsRagdoll={object=function(model,pos,scale)
 end}
 FpsWeapon.tracer({distance=350,ox=0,oy=100,oz=0,dx=0,dy=0,dz=1})
 local shot=FpsWeapon.tracers[1]
-assert(#shot.objects==6 and shot.objects[1].billboard and shot.objects[1].scale>=0.3)
+assert(#shot.objects==4 and shot.objects[1].billboard and shot.objects[1].scale==0.10)
+assert(shot.objects[1].oPosZ==0,'tracer did not begin at muzzle')
+local previous=-1
 for tick=0,5 do
     now=tick; FpsWeapon.update_tracers()
     assert(#FpsWeapon.tracers==1,'tracer disappeared too early')
+    assert(shot.objects[1].oPosZ>=previous,'tracer traveled backwards')
+    previous=shot.objects[1].oPosZ
+    assert(shot.objects[1].oPosZ>=shot.objects[4].oPosZ,'tail is ahead of bullet')
     for _,o in ipairs(shot.objects) do assert(o.oPosZ>=0 and o.oPosZ<=350,'tracer crossed hit surface') end
 end
 now=6; FpsWeapon.update_tracers()
