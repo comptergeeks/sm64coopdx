@@ -26,3 +26,5 @@ with (app / 'Info.plist').open('wb') as f:
                       CFBundlePackageType='APPL'), f)
 print('Built:', app.parent)
 PY
+codesign --force --sign - 'build/us_pc/Mario FPS.app'
+codesign --verify --verbose=2 'build/us_pc/Mario FPS.app'
