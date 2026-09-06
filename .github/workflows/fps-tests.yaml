@@ -1,15 +1,15 @@
-name: First Person Arena logic
+name: Third Person Arena logic
 
 on:
   push:
     paths:
-      - 'mods/first-person-arena/**'
-      - 'tests/first-person-arena.lua'
+      - 'mods/third-person-arena/**'
+      - 'tests/third-person-arena.lua'
       - '.github/workflows/fps-tests.yaml'
   pull_request:
     paths:
-      - 'mods/first-person-arena/**'
-      - 'tests/first-person-arena.lua'
+      - 'mods/third-person-arena/**'
+      - 'tests/third-person-arena.lua'
       - '.github/workflows/fps-tests.yaml'
 
 permissions:
@@ -21,4 +21,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y lua5.3
-      - run: lua5.3 tests/first-person-arena.lua
+      - run: lua5.3 tests/third-person-arena.lua

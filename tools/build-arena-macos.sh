@@ -9,7 +9,8 @@ import plistlib
 import shutil
 
 root = Path('build/us_pc').resolve()
-app = root / 'Mario FPS.app' / 'Contents'
+shutil.copytree('mods/third-person-arena', root / 'mods' / 'third-person-arena', dirs_exist_ok=True)
+app = root / 'Mario Arena.app' / 'Contents'
 (app / 'MacOS').mkdir(parents=True, exist_ok=True)
 (app / 'Resources').mkdir(exist_ok=True)
 shutil.copy2(root / 'sm64coopdx', app / 'MacOS' / 'sm64coopdx')
@@ -21,10 +22,10 @@ rom = app / 'MacOS' / 'baserom.us.z64'
 if not rom.is_symlink() and not rom.exists():
     rom.symlink_to(root / 'baserom.us.z64')
 with (app / 'Info.plist').open('wb') as f:
-    plistlib.dump(dict(CFBundleExecutable='sm64coopdx', CFBundleIdentifier='local.sm64.fps',
-                      CFBundleName='Mario FPS', CFBundleDisplayName='Mario FPS',
+    plistlib.dump(dict(CFBundleExecutable='sm64coopdx', CFBundleIdentifier='local.sm64.arena',
+                      CFBundleName='Mario Arena', CFBundleDisplayName='Mario Arena',
                       CFBundlePackageType='APPL'), f)
 print('Built:', app.parent)
 PY
-codesign --force --sign - 'build/us_pc/Mario FPS.app'
-codesign --verify --verbose=2 'build/us_pc/Mario FPS.app'
+codesign --force --sign - 'build/us_pc/Mario Arena.app'
+codesign --verify --verbose=2 'build/us_pc/Mario Arena.app'

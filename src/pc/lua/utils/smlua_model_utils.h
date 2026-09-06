@@ -392,6 +392,7 @@ enum ModelExtendedId {
     E_MODEL_WARIOS_WING_CAP,
     E_MODEL_WARIOS_WINGED_METAL_CAP,
 
+    E_MODEL_TPS_PISTOL,
     E_MODEL_MAX
 };
 
